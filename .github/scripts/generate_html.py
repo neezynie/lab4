@@ -1,308 +1,241 @@
 #!/usr/bin/env python3
 import os
 import sys
-from datetime import datetime
+from pathlib import Path
 
-def main():
-    repo_name = sys.argv[1]
-    tag = sys.argv[2]
-    repo_full = sys.argv[3]
+def generate_version_index(repo_name, version, github_repo):
+    """Генерирует index.html для версионной директории"""
     
-    # Страница со списком версий с улучшенным дизайном
-    versions_html = f'''<!DOCTYPE html>
-<html lang="ru">
+    versions_dir = f"deploy/{repo_name}"
+    current_version_dir = f"{versions_dir}/{version}"
+    
+    # Получаем список всех версий
+    versions = []
+    if os.path.exists(versions_dir):
+        for item in os.listdir(versions_dir):
+            if os.path.isdir(os.path.join(versions_dir, item)) and item != "latest":
+                versions.append(item)
+    
+    # Сортируем версии в обратном порядке (новые версии первыми)
+    def version_key(v):
+        # Удаляем 'v' и разбиваем на числа
+        v_clean = v.lstrip('v')
+        parts = v_clean.split('.')
+        # Заполняем недостающие части нулями
+        while len(parts) < 3:
+            parts.append('0')
+        return [int(part) for part in parts]
+    
+    versions.sort(key=version_key, reverse=True)
+    
+    html_content = f'''
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Версии релизов - {repo_name}</title>
-<style>
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ 
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-    min-height: 100vh; 
-    padding: 40px 20px; 
-}}
-.container {{ 
-    max-width: 900px; 
-    margin: 0 auto; 
-    background: white; 
-    border-radius: 20px; 
-    padding: 40px; 
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); 
-}}
-h1 {{ 
-    color: #333; 
-    text-align: center; 
-    margin-bottom: 10px; 
-    font-size: 2.5em; 
-}}
-.subtitle {{
-    text-align: center;
-    color: #666;
-    margin-bottom: 30px;
-    font-size: 1.1em;
-}}
-.search-box {{
-    margin-bottom: 30px;
-    text-align: center;
-}}
-.search-box input {{
-    padding: 12px 20px;
-    width: 100%;
-    max-width: 400px;
-    border: 2px solid #ddd;
-    border-radius: 25px;
-    font-size: 16px;
-    transition: border-color 0.3s;
-}}
-.search-box input:focus {{
-    outline: none;
-    border-color: #667eea;
-}}
-.version-list {{ 
-    list-style: none; 
-    padding: 0; 
-}}
-.version-item {{ 
-    margin-bottom: 15px;
-    opacity: 0;
-    animation: fadeIn 0.5s ease-out forwards;
-}}
-.version-item:nth-child(1) {{ animation-delay: 0.1s; }}
-.version-item:nth-child(2) {{ animation-delay: 0.2s; }}
-.version-item:nth-child(3) {{ animation-delay: 0.3s; }}
-.version-item:nth-child(4) {{ animation-delay: 0.4s; }}
-.version-item:nth-child(5) {{ animation-delay: 0.5s; }}
-.version-link {{ 
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 25px; 
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-    color: white; 
-    text-decoration: none; 
-    border-radius: 12px; 
-    transition: all 0.3s ease; 
-    font-weight: bold; 
-}}
-.version-link:hover {{ 
-    transform: translateY(-5px); 
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4); 
-}}
-.version-link .version-name {{
-    font-size: 1.3em;
-}}
-.version-link .version-badge {{
-    background: rgba(255, 255, 255, 0.2);
-    padding: 5px 15px;
-    border-radius: 15px;
-    font-size: 0.9em;
-}}
-.latest-badge {{
-    background: #ffd700 !important;
-    color: #333 !important;
-}}
-.loading {{ 
-    text-align: center; 
-    color: #666; 
-    padding: 20px;
-}}
-.error {{
-    text-align: center;
-    color: #e74c3c;
-    padding: 20px;
-}}
-.stats {{
-    display: flex;
-    justify-content: space-around;
-    margin-bottom: 30px;
-    padding: 20px;
-    background: #f8f9fa;
-    border-radius: 12px;
-}}
-.stat-item {{
-    text-align: center;
-}}
-.stat-number {{
-    font-size: 2em;
-    font-weight: bold;
-    color: #667eea;
-}}
-.stat-label {{
-    color: #666;
-    font-size: 0.9em;
-    margin-top: 5px;
-}}
-@keyframes fadeIn {{
-    from {{ opacity: 0; transform: translateY(20px); }}
-    to {{ opacity: 1; transform: translateY(0); }}
-}}
-.back-button {{
-    display: inline-block;
-    margin-bottom: 20px;
-    padding: 10px 20px;
-    background: #f8f9fa;
-    color: #333;
-    text-decoration: none;
-    border-radius: 8px;
-    transition: background 0.3s;
-}}
-.back-button:hover {{
-    background: #e9ecef;
-}}
-</style>
-</head>
-<body>
-<div class="container">
-<a href="../" class="back-button">← Назад на главную</a>
-<h1>📦 Версии релизов</h1>
-<p class="subtitle">Все доступные версии проекта {repo_name}</p>
-
-<div class="stats">
-    <div class="stat-item">
-        <div class="stat-number" id="total-versions">0</div>
-        <div class="stat-label">Всего версий</div>
-    </div>
-    <div class="stat-item">
-        <div class="stat-number" id="latest-version">...</div>
-        <div class="stat-label">Последняя версия</div>
-    </div>
-</div>
-
-<div class="search-box">
-    <input type="text" id="search-input" placeholder="🔍 Поиск версии...">
-</div>
-
-<ul class="version-list" id="versions">
-    <li class="loading">Загрузка версий...</li>
-</ul>
-</div>
-
-<script>
-(function() {{
-    const versionsList = document.getElementById('versions');
-    const searchInput = document.getElementById('search-input');
-    const totalVersionsEl = document.getElementById('total-versions');
-    const latestVersionEl = document.getElementById('latest-version');
-    let allVersions = [];
-    
-    // Загрузка версий
-    fetch('https://api.github.com/repos/{repo_full}/git/trees/gh-pages?recursive=1')
-        .then(r => r.json())
-        .then(data => {{
-            const versions = [...new Set(data.tree
-                .filter(item => item.path.includes('/{repo_name}/v') && item.type === 'tree')
-                .map(item => {{
-                    const parts = item.path.split('/');
-                    return parts.find(p => p && p.startsWith('v'));
-                }}))].filter(v => v).sort((a, b) => {{
-                    // Семантическое сортирование версий
-                    const parseVersion = v => v.substring(1).split('.').map(Number);
-                    const [aMajor, aMinor, aPatch] = parseVersion(a);
-                    const [bMajor, bMinor, bPatch] = parseVersion(b);
-                    return (bMajor - aMajor) || (bMinor - aMinor) || (bPatch - aPatch);
-                }});
-            
-            allVersions = versions;
-            totalVersionsEl.textContent = versions.length;
-            latestVersionEl.textContent = versions[0] || 'Нет версий';
-            
-            displayVersions(versions);
-        }})
-        .catch(err => {{
-            console.error('Ошибка загрузки версий:', err);
-            versionsList.innerHTML = '<li class="error">❌ Ошибка загрузки версий</li>';
-        }});
-    
-    function displayVersions(versions) {{
-        if (versions.length === 0) {{
-            versionsList.innerHTML = '<li class="loading">Версии будут доступны после создания релизов</li>';
-            return;
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Version {version} - {repo_name}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }}
         
-        versionsList.innerHTML = versions.map((version, index) => {{
-            const isLatest = index === 0;
-            const badgeClass = isLatest ? 'latest-badge' : '';
-            const badgeText = isLatest ? 'Последняя' : (versions.length - index) + ' из ' + versions.length;
-            
-            return '<li class="version-item">' +
-                '<a href="' + version + '/" class="version-link">' +
-                    '<span class="version-name">🚀 Версия ' + version + '</span>' +
-                    '<span class="version-badge ' + badgeClass + '">' + badgeText + '</span>' +
-                '</a>' +
-            '</li>';
-        }}).join('');
-    }}
-    
-    // Поиск версий
-    searchInput.addEventListener('input', function() {{
-        const query = this.value.toLowerCase();
-        const filtered = allVersions.filter(v => v.toLowerCase().includes(query));
-        displayVersions(filtered);
-    }});
-}})();
-</script>
-</body>
-</html>'''
-    
-    os.makedirs(f"deploy/{repo_name}", exist_ok=True)
-    with open(f"deploy/{repo_name}/index.html", "w", encoding="utf-8") as f:
-        f.write(versions_html)
-    
-    # Редирект на последнюю версию
-    redirect_html = f'''<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="refresh" content="0; url={repo_name}/{tag}/index.html">
-<title>Redirecting...</title>
-<style>
-body {{
-    font-family: Arial, sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    margin: 0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}}
-.container {{
-    text-align: center;
-}}
-.spinner {{
-    border: 5px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top: 5px solid white;
-    width: 50px;
-    height: 50px;
-    animation: spin 1s linear infinite;
-    margin: 20px auto;
-}}
-@keyframes spin {{
-    0% {{ transform: rotate(0deg); }}
-    100% {{ transform: rotate(360deg); }}
-}}
-a {{
-    color: white;
-    text-decoration: underline;
-}}
-</style>
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }}
+        
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        
+        header {{
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 2rem 0;
+            text-align: center;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }}
+        
+        .version-card {{
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        
+        .version-list {{
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin: 2rem 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        
+        .version-item {{
+            padding: 1rem;
+            margin: 0.5rem 0;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        
+        .btn {{
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.8rem 1.5rem;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 0.5rem;
+            transition: background 0.3s;
+            border: none;
+            cursor: pointer;
+        }}
+        
+        .btn:hover {{
+            background: #764ba2;
+        }}
+        
+        .btn-small {{
+            padding: 0.4rem 0.8rem;
+            font-size: 0.9rem;
+        }}
+        
+        .current-version {{
+            background: #e8f5e8;
+            border-left: 4px solid #4CAF50;
+        }}
+        
+        .version-links {{
+            display: flex;
+            gap: 0.5rem;
+        }}
+        
+        .language-btn {{
+            background: #27ae60;
+        }}
+        
+        .language-btn:hover {{
+            background: #219a52;
+        }}
+        
+        .home-btn {{
+            background: #e74c3c;
+        }}
+        
+        .home-btn:hover {{
+            background: #c0392b;
+        }}
+        
+        .version-info {{
+            background: #f39c12;
+            color: white;
+            padding: 0.5rem;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }}
+    </style>
 </head>
 <body>
-<div class="container">
-    <h1>🚀 Перенаправление на версию {tag}</h1>
-    <div class="spinner"></div>
-    <p>Если автоматический переход не работает, <a href="{repo_name}/{tag}/index.html">нажмите здесь</a></p>
-</div>
+    <div class="container">
+        <header>
+            <h1>🚀 {repo_name}</h1>
+            <p>Version: <strong>{version}</strong></p>
+            <div class="version-info">
+                Commit: {os.environ.get('GITHUB_SHA', 'Unknown')[:7]}
+            </div>
+        </header>
+        
+        <div class="version-card current-version">
+            <h2>📦 Current Version: {version}</h2>
+            <p>This is version <strong>{version}</strong> of the application deployed from GitHub Actions.</p>
+            
+            <div style="margin-top: 1rem;">
+                <a href="index.html" class="btn">🌐 Open Main Page</a>
+                <a href="ru/index.html" class="btn language-btn">🇷🇺 Russian Version</a>
+                <a href="en/index.html" class="btn language-btn">🇺🇸 English Version</a>
+            </div>
+        </div>
+        
+        <div class="version-list">
+            <h2>📚 All Available Versions</h2>
+            <p>Select a version to view. Older versions are preserved for reference.</p>
+            
+            <div class="version-item current-version">
+                <div>
+                    <strong>{version}</strong> (current)
+                    <div style="font-size: 0.9rem; color: #666; margin-top: 0.2rem;">
+                        Deployed: {os.environ.get('GITHUB_SHA', 'Unknown')[:7]}
+                    </div>
+                </div>
+                <div class="version-links">
+                    <a href="index.html" class="btn btn-small">Main</a>
+                    <a href="ru/index.html" class="btn btn-small">RU</a>
+                    <a href="en/index.html" class="btn btn-small">EN</a>
+                </div>
+            </div>
+    '''
+    
+    # Добавляем другие версии
+    for ver in versions:
+        if ver != version:
+            html_content += f'''
+            <div class="version-item">
+                <div>
+                    <strong>{ver}</strong>
+                </div>
+                <div class="version-links">
+                    <a href="../{ver}/index.html" class="btn btn-small">Main</a>
+                    <a href="../{ver}/ru/index.html" class="btn btn-small">RU</a>
+                    <a href="../{ver}/en/index.html" class="btn btn-small">EN</a>
+                </div>
+            </div>
+            '''
+    
+    html_content += f'''
+        </div>
+        
+        <div class="version-card">
+            <h2>🔗 Quick Links</h2>
+            <div>
+                <a href="/{repo_name}/latest/index.html" class="btn">📱 Latest Version</a>
+                <a href="/{repo_name}/" class="btn home-btn">🏠 Home</a>
+                <a href="https://github.com/{github_repo}" class="btn">💻 GitHub Repository</a>
+                <a href="https://github.com/{github_repo}/releases" class="btn">🎯 All Releases</a>
+            </div>
+        </div>
+    </div>
 </body>
-</html>'''
+</html>
+    '''
     
-    with open("deploy/index.html", "w", encoding="utf-8") as f:
-        f.write(redirect_html)
+    # Создаем index.html в директории версии
+    index_path = Path(current_version_dir) / "index.html"
+    with open(index_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
     
-    print(f"✅ Generated HTML files for release {tag}")
+    print(f"Generated version index for {version}")
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 4:
+        print("Usage: python generate_html.py <repo_name> <version> <github_repo>")
+        sys.exit(1)
+    
+    repo_name = sys.argv[1]
+    version = sys.argv[2]
+    github_repo = sys.argv[3]
+    
+    generate_version_index(repo_name, version, github_repo)
